@@ -1,0 +1,598 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>The EU in hexagons</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Where 439 million people live in the EU, drawn three ways with H3 hexagons.">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" href="data.json" as="fetch" crossorigin="anonymous">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400..900&family=Shantell+Sans:wght@500&display=swap">
+<style>
+/* Layout: one screen. A top bar (title left, credit right), then a side column with the views, controls, key number
+   and a "How this was made" toggle, and the map filling the rest. Below 860 px it stacks and the page scrolls.
+   Single light look (the Oat palette), by choice. */
+:root {
+  --card: #DDD3C1; --page: #F5EFE3; --land: #E9E1D2; --rule: #CFC5B3;
+  --ink: #1F2433; --ink2: #4B5060; --blue: #2E5A93; --accent: #E0603F; --white: #FFFFFF;
+  --font: Gabarito, "Trebuchet MS", "Segoe UI", sans-serif;
+  --hand: "Shantell Sans", "Comic Sans MS", cursive;
+  --see-through: 0.72;  /* how solid the hexagons are over the map below: the script reads this too */
+  color-scheme: light;
+}
+html, body { background: var(--card); color: var(--ink); height: 100%; }
+body { font-family: var(--font); font-size: 16px; line-height: 1.35; }
+.wrap { box-sizing: border-box; height: 100%; max-width: 1640px; margin: 0 auto; padding-block: 16px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px));
+  display: grid; grid-template-columns: minmax(290px, 340px) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 14px 26px; }
+.top { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 24px; }
+h1 { font-size: clamp(30px, 3.2vw, 42px); font-weight: 800; line-height: 1.04; margin: 0; letter-spacing: -0.01em; }
+.credit { font-size: 14px; font-weight: 600; color: var(--ink2); margin: 0; }
+.credit a, .notes a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.credit a { white-space: nowrap; }
+.side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 4px; }
+.dek { font-size: 17px; color: var(--ink2); margin: 0; }
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.tabs button { font: 700 15px var(--font); color: var(--ink); background: transparent; border: 1.5px solid var(--ink);
+  border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--page); }
+.about { font-size: 15.5px; color: var(--ink); margin: 0; }
+.controls { display: flex; flex-direction: column; gap: 12px; }
+.control { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; }
+.control > span { font-size: 14.5px; font-weight: 700; width: 100%; }
+.control output { font-size: 15px; font-weight: 700; color: var(--blue); min-width: 5.5em; font-variant-numeric: tabular-nums; }
+input[type="range"] { accent-color: var(--blue); flex: 1; min-width: 140px; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1.5px solid var(--ink2); border-radius: 8px; overflow: hidden; }
+.seg button { font: 600 13.5px var(--font); color: var(--ink); background: transparent; border: 0; padding: 6px 9px; cursor: pointer;
+  font-variant-numeric: tabular-nums; }
+.seg button + button { border-left: 1.5px solid var(--ink2); }
+.seg button[aria-pressed="true"] { background: var(--blue); color: var(--white); }
+label.check { display: inline-flex; align-items: center; gap: 7px; font-size: 14.5px; font-weight: 600; cursor: pointer; }
+label.check input { accent-color: var(--blue); width: 16px; height: 16px; }
+button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 2px; }
+.key { font-size: 20px; font-weight: 700; line-height: 1.25; margin: 0; padding-top: 12px; border-top: 1.5px solid var(--rule); }
+.key b { color: var(--blue); font-weight: 800; }
+details.how { font-size: 14px; color: var(--ink2); }
+details.how summary { font-weight: 700; color: var(--ink); cursor: pointer; font-size: 14.5px; }
+.notes { display: grid; gap: 6px; margin-top: 8px; }
+.notes p { margin: 0; }
+.notes b { font-weight: 700; color: var(--ink); }
+.map { position: relative; background: var(--card); border-radius: 6px; overflow: hidden; touch-action: none; min-height: 0; }
+.map canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+.map canvas.dragging { cursor: grabbing; }
+.legend { position: absolute; left: 0; top: 8px; background: color-mix(in srgb, var(--card) 86%, transparent); padding: 6px 12px 8px 0;
+  border-radius: 0 6px 6px 0; pointer-events: none; max-width: 62%; }
+.legend h2 { font-size: 14.5px; font-weight: 700; margin: 0 0 6px; }
+.legend ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.legend li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.legend i { width: 16px; height: 14px; border-radius: 2px; flex: none; border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); background: var(--land); }
+.legend i::before { content: ""; display: block; width: 100%; height: 100%; background: var(--c); opacity: var(--see-through); }
+.zoom { position: absolute; right: 10px; top: 10px; display: grid; gap: 6px; }
+.zoom button { width: 36px; height: 36px; border-radius: 8px; border: 1.5px solid var(--ink2); background: var(--page); color: var(--ink);
+  font: 700 19px/1 var(--font); cursor: pointer; }
+.hand { position: absolute; right: 14px; bottom: 12px; font: 500 18px/1.2 var(--hand); color: var(--ink); text-align: right; pointer-events: none;
+  text-shadow: 0 0 6px var(--card), 0 0 6px var(--card); }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--page); font-size: 13.5px; line-height: 1.3;
+  padding: 7px 10px; border-radius: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; transform: translate(12px, 12px); z-index: 2; }
+.tip b { font-weight: 700; font-size: 15px; }
+.status { position: absolute; inset: 0; display: grid; place-items: center; font-size: 17px; font-weight: 600; color: var(--ink2); pointer-events: none; }
+@media (max-width: 860px) {
+  html, body { height: auto; }
+  .wrap { height: auto; display: flex; flex-direction: column; gap: 14px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .top { flex-direction: column-reverse; align-items: flex-start; }
+  .credit { align-self: flex-end; font-size: 12.5px; }
+  .side { overflow: visible; display: contents; }
+  .side > * { order: 0; }
+  .map { order: 1; height: min(72vh, 118vw); min-height: 360px; margin-inline: -4px; }
+  .key, details.how { order: 2; }
+  .legend li { font-size: 12.5px; } .hand { font-size: 16px; }
+}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <h1>The EU in hexagons</h1>
+    <p class="credit">A <a href="https://databites.tech/">databites.tech</a> project, made with ❤️ by <a href="https://www.linkedin.com/in/iamjosepferrer/">Josep Ferrer</a></p>
+  </div>
+
+  <div class="side">
+    <p class="dek">Where 439 million people live, drawn three ways with H3, the hexagon grid built at Uber. Population from Eurostat's 2021 census.</p>
+    <div class="tabs" role="tablist" aria-label="View">
+      <button role="tab" id="tab-cap" data-view="cap" aria-selected="true">Same cap</button>
+      <button role="tab" id="tab-density" data-view="density" aria-selected="false">Density</button>
+      <button role="tab" id="tab-half" data-view="half" aria-selected="false">Fewest hexagons</button>
+    </div>
+    <p class="about" id="about"></p>
+    <div class="controls">
+      <div class="control" id="c-cap"><span>Most people in a hexagon</span>
+        <input type="range" id="cap" min="0" max="4" step="1" value="0" aria-label="Most people in a hexagon"><output id="cap-out"></output></div>
+      <div class="control" id="c-share" hidden><span>Share of the people</span>
+        <input type="range" id="share" min="10" max="90" step="5" value="50" aria-label="Share of the people"><output id="share-out"></output></div>
+      <div class="control" id="c-size" hidden><span>Hexagon size</span>
+        <div class="seg" id="size" role="group" aria-label="Hexagon size"></div></div>
+      <label class="check"><input type="checkbox" id="cities" checked> City names</label>
+    </div>
+    <p class="key" id="key"></p>
+    <details class="how">
+      <summary>How this was made</summary>
+      <div class="notes">
+        <p><b>Method:</b> residents in Eurostat's 1 km census grid, added up in H3 hexagons. A 1 km cell belongs to the smallest hexagon its centre falls in. Hexagons are drawn whole, so they reach over the sea and across borders.</p>
+        <p><b>Source:</b> Eurostat, Census 2021 population grid and NUTS 2024, © European Union. H3 by Uber. Borders, roads and cities: Natural Earth.</p>
+        <p><b>Comments:</b> only residents of EU countries are counted. The Canaries, Madeira, the Azores and France's five overseas regions are left out. Hexagons of one size differ in area by up to a third, and where two sizes meet they leave small gaps, because seven small hexagons don't trace the big one exactly.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="map" id="map">
+    <canvas id="canvas" aria-label="Map of the EU drawn in hexagons"></canvas>
+    <div class="legend" id="legend"></div>
+    <div class="zoom"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button><button id="zreset" aria-label="Reset the view">⟲</button></div>
+    <div class="hand" id="hand">Scroll or pinch to zoom,<br>drag to move</div>
+    <div class="tip" id="tip" hidden></div>
+    <div class="status" id="status">Loading the map…</div>
+  </div>
+</div>
+
+<script>
+(async function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const fmt = (n) => Math.round(n).toLocaleString("en-GB");
+  const round3 = (n) => { const p = Math.pow(10, Math.max(0, Math.floor(Math.log10(Math.max(n, 1))) - 1)); return Math.round(n / p) * p; };
+
+  // ---- Constants -------------------------------------------------------------------------------------------------
+  const CAPS = [250000, 500000, 1000000, 2500000, 5000000];  // 250,000 is the lowest cap the smallest hexagons can keep
+  const SIZES = [3, 4, 5, 6, 7];  // H3 resolutions, from the biggest hexagons to the smallest
+  const SIZE_COLOUR = { 3: "#F6F2EA", 4: "#C5D5E2", 5: "#7FA6CC", 6: "#2E5A93", 7: "#E0603F" };
+  const SIZE_NAME = { 3: "10,000 km²", 4: "1,700 km²", 5: "240 km²", 6: "34 km²", 7: "5 km²" };
+  const WIDTH = { 3: 109, 4: 44.5, 5: 16.7, 6: 6.3, 7: 2.4 };  // km between opposite sides of a hexagon
+  const DENSITY = [[0, "#F6F2EA", "No one"], [10, "#E3E9EC", "Under 10"], [50, "#C5D5E2", "10 to 50"], [150, "#9CBAD6", "50 to 150"],
+                   [500, "#6690C0", "150 to 500"], [1500, "#2E5A93", "500 to 1,500"], [Infinity, "#152F57", "Over 1,500"]];
+  const SEE_THROUGH = parseFloat(css("--see-through")) || 0.72;
+  const BATCH = 1024;   // hexagons per stored outline: many short outlines build far faster than one long one
+  const MARGIN = 0.2;   // the picture is painted this much wider than the map on every side, so dragging shows no blank edge
+  const INK = css("--ink"), CARD = css("--card"), LAND = css("--land"), FONT = css("--font");
+
+  // ---- Data: one file, unpacked into typed arrays ----------------------------------------------------------------------
+  const status = $("status");
+  let raw, A = {};
+  try {
+    raw = await (await fetch("data.json")).json();
+    const bytes = Uint8Array.from(atob(raw.blob), (ch) => ch.charCodeAt(0));
+    const buffer = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+    const TYPES = { uint32: Uint32Array, uint16: Uint16Array, uint8: Uint8Array, int32: Int32Array, int16: Int16Array, int8: Int8Array };
+    let offset = 0;
+    for (const [name, [type, count]] of Object.entries(raw.meta)) {
+      const T = TYPES[type];
+      A[name] = new T(buffer.slice(offset, offset + count * T.BYTES_PER_ELEMENT));
+      offset += count * T.BYTES_PER_ELEMENT;
+    }
+  } catch (error) {
+    status.textContent = "The map's data could not be loaded. Reload the page to try again.";
+    return;
+  }
+  const TOTAL = raw.total;
+
+  // level[r]: every hexagon of one size, with its people, its six corners in map km and its area.
+  // The map's projection keeps areas true, so a hexagon's area is the area of its outline.
+  const level = {};
+  for (const r of SIZES) {
+    const dx = A["dx" + r], dy = A["dy" + r], off = A["off" + r], q = raw.quantum[r], n = dx.length;
+    const L = level[r] = { n, cx: new Float32Array(n), cy: new Float32Array(n), xy: new Float32Array(n * 12), area: new Float32Array(n), people: new Float64Array(n) };
+    let x = 0, y = 0;
+    for (let k = 0; k < n; k++) {
+      x += dx[k]; y += dy[k];
+      const x0 = L.cx[k] = x / 100, y0 = L.cy[k] = y / 100, a = 12 * k;
+      for (let j = 0; j < 12; j += 2) { L.xy[a + j] = x0 + off[a + j] * q; L.xy[a + j + 1] = y0 + off[a + j + 1] * q; }
+      let twice = 0;
+      for (let j = 0; j < 12; j += 2) { const b = a + (j + 2) % 12; twice += L.xy[a + j] * L.xy[b + 1] - L.xy[b] * L.xy[a + j + 1]; }
+      L.area[k] = Math.abs(twice) / 2;
+    }
+  }
+  // The EU in map km (left, top, right, bottom): the outer corners of the biggest hexagons, plus a thin margin.
+  // The view never zooms out past this box or slides off it.
+  const BOUNDS = [Infinity, Infinity, -Infinity, -Infinity];
+  for (let j = 0; j < level[3].xy.length; j += 2) {
+    BOUNDS[0] = Math.min(BOUNDS[0], level[3].xy[j]); BOUNDS[2] = Math.max(BOUNDS[2], level[3].xy[j]);
+    BOUNDS[1] = Math.min(BOUNDS[1], level[3].xy[j + 1]); BOUNDS[3] = Math.max(BOUNDS[3], level[3].xy[j + 1]);
+  }
+  BOUNDS[0] -= 40; BOUNDS[1] -= 40; BOUNDS[2] += 40; BOUNDS[3] += 40;
+  level[6].people.set(A.people6);
+  level[7].people.set(A.people7);
+  const PARENT = { 7: A.up7, 6: A.up6, 5: A.up5, 4: A.up4 };  // each hexagon's place in the next size up
+  for (const r of [6, 5, 4]) for (let k = 0; k < level[r].n; k++) level[r - 1].people[PARENT[r][k]] += level[r].people[k];
+
+  // ---- Context: land, roads and cities, also in map km -----------------------------------------------------------------
+  function linesPath(name, close) {
+    const path = new Path2D(), n = A[name + "_n"], xy = A[name + "_xy"];
+    let at = 0;
+    for (let i = 0; i < n.length; i++) {
+      path.moveTo(xy[at] / 10, xy[at + 1] / 10);
+      for (let j = 1; j < n[i]; j++) path.lineTo(xy[at + 2 * j] / 10, xy[at + 2 * j + 1] / 10);
+      if (close) path.closePath();
+      at += 2 * n[i];
+    }
+    return path;
+  }
+  const landEU = linesPath("land_eu", true), landOther = linesPath("land_other", true);
+  const roadsMajor = linesPath("roads_major", false), roadsMinor = linesPath("roads_minor", false);
+  const cities = raw.cities.map(([name, x, y, tier]) => ({ name, x, y, tier, width: 0 }));
+
+  // ---- The three views. Each gives groups of hexagons to draw (one colour each), a legend, a key sentence and a way
+  //      to tell which hexagon is drawn at a point. Results are kept, so coming back to a view costs nothing. ------------------
+  const state = { view: "cap", cap: 0, share: 50, size: { density: 5, half: 5 }, cities: true };
+  const kept = new Map();
+  let drawn = null;
+
+  function group(r, colour, cells) { return { r, colour, cells, batches: null }; }
+  function batchesOf(g) {  // split a group into batches, each with the box it covers; outlines are built when first needed
+    if (g.batches) return g.batches;
+    const L = level[g.r], half = WIDTH[g.r] * 0.62;
+    g.batches = [];
+    for (let i = 0; i < g.cells.length; i += BATCH) {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      const end = Math.min(i + BATCH, g.cells.length);
+      for (let n = i; n < end; n++) { const k = g.cells[n], x = L.cx[k], y = L.cy[k]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      g.batches.push({ from: i, to: end, x0: x0 - half, y0: y0 - half, x1: x1 + half, y1: y1 + half, path: null });
+    }
+    return g.batches;
+  }
+  function outline(g, b) {
+    if (!b.path) {
+      const xy = level[g.r].xy, path = b.path = new Path2D();
+      for (let n = b.from; n < b.to; n++) {
+        const a = 12 * g.cells[n];
+        path.moveTo(xy[a], xy[a + 1]);
+        for (let j = 2; j < 12; j += 2) path.lineTo(xy[a + j], xy[a + j + 1]);
+        path.closePath();
+      }
+    }
+    return b.path;
+  }
+  const pick = (flags) => { let n = 0; for (let k = 0; k < flags.length; k++) n += flags[k]; const out = new Int32Array(n); n = 0; for (let k = 0; k < flags.length; k++) if (flags[k]) out[n++] = k; return out; };
+
+  function viewCap() {
+    const key = "cap" + state.cap;
+    if (kept.has(key)) return kept.get(key);
+    const cap = CAPS[state.cap], seen = {}, split = new Uint8Array(level[6].n);
+    for (const r of SIZES) seen[r] = new Uint8Array(level[r].n);
+    const P = { 3: level[3].people, 4: level[4].people, 5: level[5].people, 6: level[6].people };
+    for (let k6 = 0; k6 < level[6].n; k6++) {  // each small hexagon looks up its family for the biggest one that fits under the cap
+      const k5 = PARENT[6][k6], k4 = PARENT[5][k5], k3 = PARENT[4][k4];
+      if (P[3][k3] <= cap) seen[3][k3] = 1;
+      else if (P[4][k4] <= cap) seen[4][k4] = 1;
+      else if (P[5][k5] <= cap) seen[5][k5] = 1;
+      else if (P[6][k6] <= cap) seen[6][k6] = 1;
+      else split[k6] = 1;
+    }
+    for (let k7 = 0; k7 < level[7].n; k7++) if (split[PARENT[7][k7]]) seen[7][k7] = 1;
+    const groups = [], rows = [];
+    let total = 0, small = 0;
+    for (const r of SIZES) {
+      const cells = pick(seen[r]);
+      if (!cells.length) continue;
+      groups.push(group(r, SIZE_COLOUR[r], cells));
+      rows.push([SIZE_COLOUR[r], `${SIZE_NAME[r]} · ${fmt(cells.length)}`]);
+      total += cells.length;
+      if (r >= 6) for (const k of cells) small += level[r].people[k];
+    }
+    const result = {
+      groups, legend: { title: "Size of the hexagon", rows },
+      key: `<b>${fmt(total)}</b> hexagons, none with more than ${fmt(cap)} people. The two smallest sizes hold <b>${Math.round(small / TOTAL * 100)}%</b> of the people.`,
+      at(x, y) { for (let r = 7; r >= 3; r--) { const k = find(r, x, y, seen[r]); if (k >= 0) return [r, k]; } return null; },
+    };
+    kept.set(key, result);
+    return result;
+  }
+
+  function viewDensity() {
+    const r = state.size.density, key = "density" + r;
+    if (kept.has(key)) return kept.get(key);
+    const L = level[r], flags = DENSITY.map(() => new Uint8Array(L.n));
+    for (let k = 0; k < L.n; k++) {
+      let c = 0;
+      if (L.people[k] > 0) { const d = L.people[k] / L.area[k]; c = 1; while (d >= DENSITY[c][0]) c++; }
+      flags[c][k] = 1;
+    }
+    const sorted = Float64Array.from(L.people).sort();
+    const result = {
+      groups: DENSITY.map((d, c) => group(r, d[1], pick(flags[c]))).filter((g) => g.cells.length),
+      legend: { title: "People per km²", rows: DENSITY.map((d) => [d[1], d[2]]) },
+      key: `<b>${fmt(L.n)}</b> hexagons of about ${SIZE_NAME[r]}. Half of them hold fewer than <b>${fmt(round3(sorted[L.n >> 1]))}</b> people.`,
+      at(x, y) { const k = find(r, x, y, null); return k < 0 ? null : [r, k]; },
+    };
+    kept.set(key, result);
+    return result;
+  }
+
+  function viewHalf() {
+    const r = state.size.half, L = level[r], key = "rank" + r;
+    if (!kept.has(key)) {  // done once per size: every hexagon's rank by people, and the running total down that ranking
+      const order = Array.from({ length: L.n }, (_, k) => k).sort((a, b) => L.people[b] - L.people[a]);
+      const rank = new Int32Array(L.n), running = new Float64Array(L.n), all = new Int32Array(L.n);
+      let sum = 0;
+      order.forEach((k, i) => { rank[k] = i; sum += L.people[k]; running[i] = sum; all[i] = i; });
+      kept.set(key, { rank, running, others: group(r, SIZE_COLOUR[3], all) });
+    }
+    const { rank, running, others } = kept.get(key), target = TOTAL * state.share / 100;
+    let lo = 0, hi = L.n - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (running[mid] >= target) hi = mid; else lo = mid + 1; }
+    const n = lo + 1, flags = new Uint8Array(L.n);
+    for (let k = 0; k < L.n; k++) if (rank[k] < n) flags[k] = 1;
+    const part = n / L.n * 100;
+    return {
+      groups: [others, group(r, SIZE_COLOUR[7], pick(flags))],
+      legend: { title: `Hexagons of about ${SIZE_NAME[r]}`, rows: [[SIZE_COLOUR[7], `The ${fmt(n)} fullest`], [SIZE_COLOUR[3], `The other ${fmt(L.n - n)}`]] },
+      key: `<b>${state.share}%</b> of the people live in <b>${part < 10 ? part.toFixed(1) : Math.round(part)}%</b> of the hexagons: ${fmt(n)} of ${fmt(L.n)}.`,
+      at(x, y) { const k = find(r, x, y, null); return k < 0 ? null : [r, k]; },
+    };
+  }
+
+  // ---- Which hexagon is under a point: a coarse grid per size, built the first time it is asked for -------------------------
+  const grids = {};
+  function grid(r) {
+    if (grids[r]) return grids[r];
+    const L = level[r], step = WIDTH[r] * 1.3, x0 = -2400, y0 = -2400, cols = Math.ceil(5200 / step) + 1, rows = Math.ceil(4900 / step) + 1;
+    const cell = new Int32Array(L.n), start = new Int32Array(cols * rows + 1), items = new Int32Array(L.n);
+    for (let k = 0; k < L.n; k++) { cell[k] = Math.floor((L.cx[k] - x0) / step) + cols * Math.floor((L.cy[k] - y0) / step); start[cell[k] + 1]++; }
+    for (let i = 0; i < cols * rows; i++) start[i + 1] += start[i];
+    const next = start.slice(0, cols * rows);
+    for (let k = 0; k < L.n; k++) items[next[cell[k]]++] = k;
+    return grids[r] = { step, x0, y0, cols, rows, start, items };
+  }
+  function inside(r, k, x, y) {
+    const xy = level[r].xy, a = 12 * k;
+    let sign = 0;
+    for (let j = 0; j < 12; j += 2) {
+      const b = a + (j + 2) % 12, cross = (xy[b] - xy[a + j]) * (y - xy[a + j + 1]) - (xy[b + 1] - xy[a + j + 1]) * (x - xy[a + j]);
+      if (cross !== 0) { if (sign === 0) sign = cross > 0 ? 1 : -1; else if ((cross > 0 ? 1 : -1) !== sign) return false; }
+    }
+    return true;
+  }
+  function find(r, x, y, only) {
+    const g = grid(r), gx = Math.floor((x - g.x0) / g.step), gy = Math.floor((y - g.y0) / g.step);
+    for (let j = gy - 1; j <= gy + 1; j++) for (let i = gx - 1; i <= gx + 1; i++) {
+      if (i < 0 || j < 0 || i >= g.cols || j >= g.rows) continue;
+      const b = i + g.cols * j;
+      for (let n = g.start[b]; n < g.start[b + 1]; n++) { const k = g.items[n]; if ((!only || only[k]) && inside(r, k, x, y)) return k; }
+    }
+    return -1;
+  }
+
+  const ABOUT = {
+    cap: "A hexagon with more people than the cap is split into seven smaller ones, again and again. Small hexagons mark crowded places, and big ones mark empty country.",
+    density: "People per km² in each hexagon. Change the hexagon size: big hexagons blur cities into their surroundings, and small ones pick out every town.",
+    half: "The fullest hexagons, added up until they hold the share of the people you choose. The rest of the map holds everyone else.",
+  };
+
+  // ---- Drawing. The map is painted into a hidden canvas, a bit wider than the screen. While it moves, that picture is
+  //      slid and stretched into place, and a sharp one is painted as soon as the movement stops. ---------------------------
+  const canvas = $("canvas"), ctx = canvas.getContext("2d"), box = $("map");
+  const base = document.createElement("canvas"), bctx = base.getContext("2d");
+  const layer = document.createElement("canvas"), lctx = layer.getContext("2d", { willReadFrequently: false });
+  const view = { scale: 1, x: 0, y: 0 };  // screen = map km * scale + (x, y), in CSS pixels
+  const painted = { scale: 1, x: 0, y: 0, padX: 0, padY: 0 };
+  let hover = null, sharpen = 0, pixels = null, fitScale = 0;
+
+  function fit() {
+    const w = box.clientWidth, h = box.clientHeight, bw = BOUNDS[2] - BOUNDS[0], bh = BOUNDS[3] - BOUNDS[1];
+    view.scale = Math.min(w / bw, h / bh) * 0.98;
+    view.x = w / 2 - (BOUNDS[0] + bw / 2) * view.scale;
+    view.y = h / 2 - (BOUNDS[1] + bh / 2) * view.scale;
+    fitScale = view.scale;
+  }
+  // The data covers the EU only, so the view never zooms out past the whole EU or slides off it
+  function clamp() {
+    const w = box.clientWidth, h = box.clientHeight, size = [w, h], key = ["x", "y"];
+    view.scale = Math.max(fitScale, view.scale);
+    for (const i of [0, 1]) {
+      const from = BOUNDS[i] * view.scale, to = BOUNDS[i + 2] * view.scale;
+      view[key[i]] = to - from <= size[i] ? (size[i] - (to - from)) / 2 - from : Math.min(-from, Math.max(size[i] - to, view[key[i]]));
+    }
+  }
+  const rgb = (hex) => 0xFF000000 | (parseInt(hex.slice(5, 7), 16) << 16) | (parseInt(hex.slice(3, 5), 16) << 8) | parseInt(hex.slice(1, 3), 16);
+
+  function paint() {
+    const dpr = window.devicePixelRatio || 1, w = box.clientWidth, h = box.clientHeight;
+    const padX = Math.round(w * MARGIN), padY = Math.round(h * MARGIN), W = Math.round((w + 2 * padX) * dpr), H = Math.round((h + 2 * padY) * dpr);
+    if (base.width !== W || base.height !== H) { base.width = layer.width = W; base.height = layer.height = H; pixels = null; }
+    Object.assign(painted, view, { padX, padY });
+    const s = view.scale * dpr, tx = (view.x + padX) * dpr, ty = (view.y + padY) * dpr;
+    const left = -tx / s, top = -ty / s, right = (W - tx) / s, bottom = (H - ty) / s;  // what the picture covers, in map km
+
+    // below: sea, land, borders, roads
+    bctx.setTransform(1, 0, 0, 1, 0, 0);
+    bctx.globalAlpha = 1;
+    bctx.fillStyle = CARD;
+    bctx.fillRect(0, 0, W, H);
+    bctx.setTransform(s, 0, 0, s, tx, ty);
+    bctx.lineJoin = bctx.lineCap = "round";
+    bctx.fillStyle = LAND;
+    bctx.fill(landOther); bctx.fill(landEU);
+    bctx.strokeStyle = "rgba(31,36,51,.22)"; bctx.lineWidth = 0.6 * dpr / s; bctx.stroke(landOther);
+    bctx.strokeStyle = "rgba(104,80,48,.6)";
+    if (view.scale > 0.45) { bctx.lineWidth = 0.6 * dpr / s; bctx.stroke(roadsMinor); }
+    bctx.lineWidth = (view.scale > 0.45 ? 1.2 : 0.8) * dpr / s; bctx.stroke(roadsMajor);
+    bctx.strokeStyle = "rgba(31,36,51,.8)"; bctx.lineWidth = 1 * dpr / s; bctx.stroke(landEU);
+
+    // the hexagons, solid, on their own canvas
+    lctx.setTransform(1, 0, 0, 1, 0, 0);
+    lctx.clearRect(0, 0, W, H);
+    let dots = false, shapes = false;
+    for (const g of drawn.groups) {
+      const size = WIDTH[g.r] * s;  // a hexagon's width in device pixels
+      if (size >= 3.5) continue;
+      // hexagons too small to show a shape are set as square dots straight into the picture's pixels: 130,000 of them cost a few milliseconds
+      if (!dots) { if (!pixels) pixels = lctx.createImageData(W, H); else new Uint32Array(pixels.data.buffer).fill(0); dots = true; }
+      const out = new Uint32Array(pixels.data.buffer), colour = rgb(g.colour), side = Math.max(1, Math.ceil(size)), L = level[g.r];
+      for (let n = 0; n < g.cells.length; n++) {
+        const k = g.cells[n], px = Math.round(L.cx[k] * s + tx - side / 2), py = Math.round(L.cy[k] * s + ty - side / 2);
+        if (px < 0 || py < 0 || px + side > W || py + side > H) continue;
+        for (let j = 0; j < side; j++) { const row = (py + j) * W + px; for (let i = 0; i < side; i++) out[row + i] = colour; }
+      }
+    }
+    if (dots) lctx.putImageData(pixels, 0, 0);
+    lctx.setTransform(s, 0, 0, s, tx, ty);
+    for (const g of drawn.groups) {
+      if (WIDTH[g.r] * s < 3.5) continue;
+      lctx.fillStyle = g.colour;
+      for (const b of batchesOf(g)) if (b.x1 > left && b.x0 < right && b.y1 > top && b.y0 < bottom) { lctx.fill(outline(g, b)); shapes = true; }
+    }
+    if (shapes) {  // neighbours leave a hairline where their soft edges meet: laying the picture over itself closes it
+      lctx.setTransform(1, 0, 0, 1, 0, 0);
+      lctx.drawImage(layer, 0, 0); lctx.drawImage(layer, 0, 0);
+      lctx.setTransform(s, 0, 0, s, tx, ty);
+      lctx.strokeStyle = "#FFFFFF"; lctx.lineJoin = "round";
+      for (const g of drawn.groups) {  // thin white lines between hexagons wide enough to show them
+        if (WIDTH[g.r] * view.scale < 7) continue;
+        lctx.lineWidth = 0.7 * dpr / s;
+        for (const b of batchesOf(g)) if (b.x1 > left && b.x0 < right && b.y1 > top && b.y0 < bottom) lctx.stroke(outline(g, b));
+      }
+    }
+    // hexagons over the map, see-through
+    bctx.setTransform(1, 0, 0, 1, 0, 0);
+    bctx.globalAlpha = SEE_THROUGH;
+    bctx.drawImage(layer, 0, 0);
+    bctx.globalAlpha = 1;
+  }
+
+  function draw(moving) {
+    const dpr = window.devicePixelRatio || 1, w = box.clientWidth, h = box.clientHeight;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+    if (!moving) { clearTimeout(sharpen); paint(); }
+    else { clearTimeout(sharpen); sharpen = setTimeout(() => draw(false), 110); }
+    top_();
+  }
+  function top_() {  // the kept picture in place, then what sits on top: the hexagon under the pointer and the city names
+    const dpr = window.devicePixelRatio || 1, w = box.clientWidth, h = box.clientHeight, f = view.scale / painted.scale;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = CARD;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(f, 0, 0, f, (view.x - (painted.x + painted.padX) * f) * dpr, (view.y - (painted.y + painted.padY) * f) * dpr);
+    ctx.drawImage(base, 0, 0);
+    if (hover) {
+      ctx.setTransform(view.scale * dpr, 0, 0, view.scale * dpr, view.x * dpr, view.y * dpr);
+      const xy = level[hover[0]].xy, a = 12 * hover[1];
+      ctx.beginPath(); ctx.moveTo(xy[a], xy[a + 1]);
+      for (let j = 2; j < 12; j += 2) ctx.lineTo(xy[a + j], xy[a + j + 1]);
+      ctx.closePath();
+      ctx.strokeStyle = INK; ctx.lineWidth = 2 / view.scale; ctx.lineJoin = "round"; ctx.stroke();
+    }
+    if (!state.cities) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const tier = view.scale > 5 ? 5 : view.scale > 2.4 ? 4 : view.scale > 1.2 ? 3 : view.scale > 0.6 ? 2 : view.scale > 0.3 ? 1 : 0;
+    ctx.font = `600 12.5px ${FONT}`;
+    ctx.textBaseline = "middle"; ctx.lineJoin = "round";
+    const taken = [];
+    for (const city of cities) {  // most important first; a name is skipped if it would sit on one already placed
+      if (city.tier > tier) continue;
+      const x = city.x * view.scale + view.x, y = city.y * view.scale + view.y;
+      if (x < -20 || y < -10 || x > w + 10 || y > h + 10) continue;
+      if (!city.width) city.width = ctx.measureText(city.name).width;
+      const x0 = x - 5, x1 = x + 8 + city.width, y0 = y - 9, y1 = y + 9;
+      if (taken.some((t) => x0 < t[1] && x1 > t[0] && y0 < t[3] && y1 > t[2])) continue;
+      taken.push([x0, x1, y0, y1]);
+      ctx.fillStyle = INK;
+      ctx.beginPath(); ctx.arc(x, y, 2.2, 0, 7); ctx.fill();
+      ctx.strokeStyle = "rgba(245,239,227,.92)"; ctx.lineWidth = 3.2;
+      ctx.strokeText(city.name, x + 6, y); ctx.fillText(city.name, x + 6, y);
+    }
+  }
+
+  function rebuild() {
+    drawn = { cap: viewCap, density: viewDensity, half: viewHalf }[state.view]();
+    $("legend").innerHTML = `<h2>${drawn.legend.title}</h2><ul>` + drawn.legend.rows.map(([c, t]) => `<li><i style="--c:${c}"></i>${t}</li>`).join("") + "</ul>";
+    $("key").innerHTML = drawn.key;
+    $("about").textContent = ABOUT[state.view];
+    hover = null; $("tip").hidden = true;
+    draw(false);
+    status.hidden = true;
+  }
+
+  // ---- Controls ----------------------------------------------------------------------------------------------------
+  function sizeButtons() {
+    const options = state.view === "density" ? [3, 4, 5, 6] : [4, 5, 6];
+    $("size").innerHTML = options.map((r) => `<button type="button" data-r="${r}" aria-pressed="${state.size[state.view] === r}">${SIZE_NAME[r]}</button>`).join("");
+  }
+  function showControls() {
+    $("c-cap").hidden = state.view !== "cap";
+    $("c-share").hidden = state.view !== "half";
+    $("c-size").hidden = state.view === "cap";
+    $("cap-out").textContent = fmt(CAPS[state.cap]);
+    $("share-out").textContent = state.share + "%";
+    for (const tab of document.querySelectorAll(".tabs button")) tab.setAttribute("aria-selected", tab.dataset.view === state.view);
+    if (state.view !== "cap") sizeButtons();
+  }
+  function setView(name, fromHash) {
+    if (!ABOUT[name]) name = "cap";
+    state.view = name;
+    showControls();
+    if (!fromHash) { try { history.replaceState(null, "", "#" + name); } catch (e) { location.hash = name; } }
+    rebuild();
+  }
+  document.querySelector(".tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setView(b.dataset.view); });
+  $("cap").addEventListener("input", (e) => { state.cap = +e.target.value; showControls(); rebuild(); });
+  $("share").addEventListener("input", (e) => { state.share = +e.target.value; showControls(); rebuild(); });
+  $("size").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.size[state.view] = +b.dataset.r; showControls(); rebuild(); });
+  $("cities").addEventListener("change", (e) => { state.cities = e.target.checked; top_(); });
+  window.addEventListener("hashchange", () => setView(location.hash.slice(1), true));
+
+  // ---- Moving around: drag, wheel, pinch, buttons ------------------------------------------------------------------
+  let frame = 0;
+  const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; draw(true); }); };  // one redraw per screen refresh, however many events arrive
+  function zoomAt(px, py, factor) {
+    const next = Math.min(60, Math.max(fitScale, view.scale * factor)), f = next / view.scale;
+    view.x = px - (px - view.x) * f; view.y = py - (py - view.y) * f; view.scale = next;
+    clamp();
+    $("hand").hidden = true; $("tip").hidden = true;
+    later();
+  }
+  const pointers = new Map();
+  let pinch = 0, moved = false;
+  const local = (e) => { const b = canvas.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  canvas.addEventListener("pointerdown", (e) => { canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, local(e)); moved = false; canvas.classList.add("dragging");
+    if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch = Math.hypot(a[0] - b[0], a[1] - b[1]); } });
+  canvas.addEventListener("pointermove", (e) => {
+    const p = local(e);
+    if (!pointers.has(e.pointerId)) { if (e.pointerType === "mouse") tipAt(p); return; }
+    const before = pointers.get(e.pointerId);
+    pointers.set(e.pointerId, p);
+    if (pointers.size === 1) {
+      const dx = p[0] - before[0], dy = p[1] - before[1];
+      if (dx || dy) { view.x += dx; view.y += dy; clamp(); if (Math.abs(dx) + Math.abs(dy) > 1) moved = true; $("tip").hidden = true; $("hand").hidden = true; later(); }
+    } else if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      if (pinch > 0 && d > 0) zoomAt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, d / pinch);
+      pinch = d; moved = true;
+    }
+  });
+  const release = (e) => { if (pointers.has(e.pointerId) && !moved && e.type === "pointerup") tipAt(local(e)); pointers.delete(e.pointerId); pinch = 0; if (!pointers.size) canvas.classList.remove("dragging"); };
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", release);
+  canvas.addEventListener("pointerleave", () => { if (!pointers.size && hover) { hover = null; $("tip").hidden = true; top_(); } });
+  canvas.addEventListener("wheel", (e) => { e.preventDefault(); const p = local(e); zoomAt(p[0], p[1], Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0016))); }, { passive: false });
+  const centre = () => [box.clientWidth / 2, box.clientHeight / 2];
+  $("zin").addEventListener("click", () => zoomAt(...centre(), 1.6));
+  $("zout").addEventListener("click", () => zoomAt(...centre(), 1 / 1.6));
+  $("zreset").addEventListener("click", () => { fit(); draw(false); });
+
+  // ---- The tooltip: what is in the hexagon under the pointer --------------------------------------------------------
+  function tipAt(p) {
+    const found = drawn.at((p[0] - view.x) / view.scale, (p[1] - view.y) / view.scale), tip = $("tip");
+    if (!found) { if (hover) { hover = null; top_(); } tip.hidden = true; return; }
+    if (!hover || hover[0] !== found[0] || hover[1] !== found[1]) { hover = found; top_(); }
+    const L = level[found[0]], people = L.people[found[1]], area = L.area[found[1]];
+    tip.innerHTML = `<b>${people ? fmt(round3(people)) : "No"} people</b><br>${area < 10 ? area.toFixed(1) : fmt(area)} km² · ${fmt(people / area)} per km²`;
+    tip.hidden = false;
+    const flip = p[0] > box.clientWidth - 190;
+    tip.style.left = (flip ? p[0] - 190 : p[0]) + "px";
+    tip.style.top = Math.min(p[1], box.clientHeight - 64) + "px";
+  }
+
+  // ---- Start ---------------------------------------------------------------------------------------------------------
+  fit();
+  let sized = [box.clientWidth, box.clientHeight];
+  new ResizeObserver(() => { if (box.clientWidth === sized[0] && box.clientHeight === sized[1]) return; sized = [box.clientWidth, box.clientHeight]; fit(); if (drawn) draw(false); }).observe(box);
+  setView(location.hash.slice(1) || "cap", true);
+})();
+</script>
+
+</body></html>
